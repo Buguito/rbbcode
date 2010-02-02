@@ -27,7 +27,19 @@ describe RbbCode::TreeMaker do
 				end
 			end
 		end
-	
+
+		it 'should make a tree from a string with one tag ignoring case' do
+			str = 'This is [b]bold[/B] text'
+
+			expect_tree(str) do
+				tag('p') do
+					text 'This is '
+					tag('b') { text 'bold' }
+					text ' text'
+				end
+			end
+		end
+
 		it 'should ignore tags that are invalid in their context' do
 			@schema.tag('u').may_not_descend_from('b')
 			

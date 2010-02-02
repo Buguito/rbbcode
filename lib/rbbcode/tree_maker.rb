@@ -68,7 +68,7 @@ module RbbCode
 		
 		def initialize(parent, tag_name, value = nil)
 			super(parent)
-			@tag_name = tag_name
+			@tag_name = tag_name.downcase
 			@value = value
 		end
 		
@@ -310,7 +310,7 @@ module RbbCode
 						current_token << char
 					elsif char == ']'
 						original_parent = current_parent
-						while current_parent.is_a?(TagNode) and current_parent.tag_name != current_token[2..-1]
+						while current_parent.is_a?(TagNode) and current_parent.tag_name != current_token[2..-1].downcase
 							current_parent = current_parent.parent
 						end
 						if current_parent.is_a?(TagNode)
