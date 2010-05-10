@@ -70,12 +70,21 @@ module RbbCode
 			super(parent)
 			@tag_name = tag_name.downcase
 			@value = value
+			@preformatted = false
 		end
 		
 		def inner_bb_code
 			@children.inject('') do |output, child|
 				output << child.to_bb_code
 			end
+		end
+		
+		def preformat!
+			@preformatted = true
+		end
+		
+		def preformatted?
+			@preformatted
 		end
 		
 		def to_bb_code
@@ -100,7 +109,7 @@ module RbbCode
 		end
 		
 		def make_tree(str)
-			delete_empty_paragraphs!(
+			delete_junk_breaks!(
 				delete_invalid_empty_tags!(
 					parse_str(str)
 				)
@@ -130,14 +139,18 @@ module RbbCode
 			end
 		end
 		
-		def delete_empty_paragraphs!(node)
+		# Delete empty paragraphs and line breaks at the end of block-level elements
+		def delete_junk_breaks!(node)
 			node.children.reject! do |child|
 				if child.is_a?(TagNode)
 					if !child.children.empty?
-						delete_empty_paragraphs!(child)
+						delete_junk_breaks!(child)
 						false
 					elsif child.tag_name == @schema.paragraph_tag_name
-						# It's an empty paragraph tag, so the reject! block should return true
+						# It's an empty paragraph tag
+						true
+					elsif @schema.block_level?(node.tag_name) and child.tag_name == @schema.line_break_tag_name and node.children.last == child
+						# It's a line break a the end of the block-level element
 						true
 					else
 						false
@@ -217,7 +230,7 @@ module RbbCode
 						current_token << char
 					end
 				when :break
-					if char == CR_CODE or char_code == LF_CODE
+					if char_code == CR_CODE or char_code == LF_CODE
 						current_token << char
 					else
 						if break_type(current_token) == :paragraph
@@ -258,7 +271,7 @@ module RbbCode
 					case char
 					when '['
 						current_parent << TextNode.new(current_parent, '[')
-						# No need to reset current_token or current_token_type
+						# No need to reset current_token or current_token_type, because now we're in a new possible tag
 					when '/'
 						current_token_type = :closing_tag
 						current_token << '/'
@@ -289,11 +302,21 @@ module RbbCode
 							current_parent << tag_node
 							current_parent = tag_node
 							# If all of this results in empty paragraph tags, no worries: they will be deleted later.
+						elsif tag_node.tag_name == current_parent.tag_name and @schema.close_twins?(tag_node.tag_name)
+							# The current tag and the tag we're now opening are of the same type, and this kind of tag auto-closes its twins
+							# (E.g. * tags in the default config.)
+							current_parent.parent << tag_node
+							current_parent = tag_node
 						elsif @schema.tag(tag_node.tag_name).valid_in_context?(*ancestor_list(current_parent))
 							current_parent << tag_node
 							current_parent = tag_node
 						end # else, don't do anything--the tag is invalid and will be ignored
-						current_token_type = :unknown
+						if @schema.preformatted?(current_parent.tag_name)
+							current_token_type = :preformatted
+							current_parent.preformat!
+						else
+							current_token_type = :unknown
+						end
 						current_token = ''
 					elsif char == "\r" or char == "\n"
 						current_parent << TextNode.new(current_parent, current_token)
@@ -330,6 +353,27 @@ module RbbCode
 						current_token_type = :text
 						current_token << char
 					end					
+				when :preformatted
+					if char == '['
+						current_parent << TextNode.new(current_parent, current_token)
+						current_token_type = :possible_preformatted_end
+						current_token = '['
+					else
+						current_token << char
+					end
+				when :possible_preformatted_end
+					current_token << char
+					if current_token == "[/#{current_parent.tag_name}]" # Did we just see the closing tag for this preformatted element?
+						current_parent = current_parent.parent
+						current_token_type = :unknown
+						current_token = ''
+					elsif char == ']' # We're at the end of this opening/closing tag, and it's not the closing tag for the preformatted element
+						current_parent << TextNode.new(current_parent, current_token)
+						current_token_type = :preformatted
+						current_token = ''
+					end
+				else
+					raise "Unknown token type in state machine: #{current_token_type}"
 				end
 			end
 			# Handle whatever's left in the current token

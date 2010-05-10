@@ -35,9 +35,29 @@ module RbbCode
 	end
 	
 	class SchemaTag < SchemaNode
+		def closes_twins
+			@schema.close_twins(@name)
+			self
+		end
+		
+		def does_not_close_twins
+			@schema.dont_close_twins(@name)
+			self
+		end
+		
 		def initialize(schema, name)
 			@schema = schema
 			@name = name
+		end
+		
+		def is_not_preformatted
+			@schema.unmark_as_preformatted(@name)
+			self
+		end
+		
+		def is_preformatted
+			@schema.mark_as_preformatted(@name)
+			self
 		end
 		
 		def may_be_nested
@@ -65,7 +85,7 @@ module RbbCode
 		end
 		
 		def may_only_be_parent_of(*tag_names)
-			@schema.forbid_children_except(@name, *tag_names)
+			@schema.forbid_children_except(@name, tag_names)
 			self
 		end
 		
@@ -143,6 +163,20 @@ module RbbCode
 			@forbidden_descent = {}
 			@required_parents = {}
 			@no_text = []
+			@twin_closers = []
+			@preformatted = []
+		end
+		
+		def close_twins(tag_name)
+			@twin_closers << tag_name.to_s unless @twin_closers.include?(tag_name.to_s)
+		end
+		
+		def close_twins?(tag_name)
+			@twin_closers.include?(tag_name.to_s)
+		end
+		
+		def does_not_close_twins(tag_name)
+			@twin_closers.delete(tag_name.to_s)
 		end
 		
 		def forbid_children_except(parent, children)
@@ -175,6 +209,8 @@ module RbbCode
 			@child_requirements = {}
 			@never_empty = []
 			@no_text = []
+			@twin_closers = []
+			@preformatted = []
 			use_defaults
 		end
 		
@@ -182,8 +218,16 @@ module RbbCode
 			'br'
 		end
 		
+		def mark_as_preformatted(tag_name)
+			@preformatted << tag_name.to_s unless @preformatted.include?(tag_name.to_s)
+		end
+		
 		def paragraph_tag_name
 			'p'
+		end
+		
+		def preformatted?(tag_name)
+			@preformatted.include?(tag_name.to_s)
 		end
 		
 		def require_parents(parents, child) #:nodoc:
@@ -230,6 +274,10 @@ module RbbCode
 			return true
 		end
 
+		def unmark_as_preformatted(tag_name)
+			@preformatted.delete(tag_name.to_s)
+		end
+
 		def unrequire_parent(parent, child)
 			@required_parents.delete(child.to_s)
 		end
@@ -246,8 +294,10 @@ module RbbCode
 			tag('url').may_not_be_nested
 			tag('img').may_not_be_nested
 			tag('code').may_not_be_nested
+			tag('code').is_preformatted
 			tag('p').may_not_be_nested
 			tag('*').must_be_child_of('list')
+			tag('*').closes_twins
 			tag('list').may_not_descend_from('p')
 			tag('list').may_only_be_parent_of('*')
 			tag('list').may_not_contain_text

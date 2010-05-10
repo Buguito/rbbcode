@@ -4,21 +4,21 @@ require 'pp'
 
 describe RbbCode::TreeMaker do
 	include NodeMatchers
-	
+
 	context '#make_tree' do
 		def expect_tree(str, &block)
 			expected = NodeBuilder.build(&block)
 			@tree_maker.make_tree(str).should match_node(expected)
 		end
-		
+
 		before :each do
 			@schema = RbbCode::Schema.new
 			@tree_maker = RbbCode::TreeMaker.new(@schema)
-		end		
+		end
 
-		it 'should make a tree from a string with one tag' do
+		it 'makes a tree from a string with one tag' do
 			str = 'This is [b]bold[/b] text'
-			
+
 			expect_tree(str) do
 				tag('p') do
 					text 'This is '
@@ -40,11 +40,12 @@ describe RbbCode::TreeMaker do
 			end
 		end
 
-		it 'should ignore tags that are invalid in their context' do
+
+		it 'ignores tags that are invalid in their context' do
 			@schema.tag('u').may_not_descend_from('b')
-			
+
 			str = 'This is [b]bold and [u]underlined[/u][/b] text'
-			
+
 			expect_tree(str) do
 				tag('p') do
 					text 'This is '
@@ -57,9 +58,9 @@ describe RbbCode::TreeMaker do
 			end
 		end
 
-		it 'should create paragraph tags' do
+		it 'creates paragraph tags' do
 			str = "This is a paragraph.\n\nThis is another."
-			
+
 			expect_tree(str) do
 				tag('p') do
 					text 'This is a paragraph.'
@@ -70,9 +71,9 @@ describe RbbCode::TreeMaker do
 			end
 		end
 
-		it 'should not put block-level elements inside paragraph tags' do
+		it 'does not put block-level elements inside paragraph tags' do
 			str = "This is a list:\n\n[list]\n\n[*]Foo[/i]\n\n[/list]\n\nwith some text after it"
-			
+
 			expect_tree(str) do
 				tag('p') do
 					text 'This is a list:'
@@ -85,10 +86,10 @@ describe RbbCode::TreeMaker do
 				end
 			end
 		end
-		
-		it 'should not insert br tags in the midst of block-level elements' do
+
+		it 'does not insert br tags in the midst of block-level elements' do
 			str = "List:\n[list]\n[*]Foo[/*]\n[*]Bar[/*]\n[/list]\nText after list"
-			
+
 			expect_tree(str) do
 				tag('p') do
 					text 'List:'
@@ -102,15 +103,30 @@ describe RbbCode::TreeMaker do
 				end
 			end
 		end
-		
-		it 'should store tag values' do
+
+		it 'stores tag values' do
 			str = 'This is a [url=http://google.com]link[/url]'
-			
+
 			expect_tree(str) do
 				tag('p') do
 					text 'This is a '
 					tag('url', 'http://google.com') do
 						text 'link'
+					end
+				end
+			end
+		end
+
+		it 'auto-closes twins when the schema says it should' do
+			str = "[list]\n[*]One\n[*]Two\n[/list]"
+
+			expect_tree(str) do
+				tag('list') do
+					tag('*') do
+						text 'One'
+					end
+					tag('*') do
+						text 'Two'
 					end
 				end
 			end
