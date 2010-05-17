@@ -186,6 +186,7 @@ module RbbCode
 			tree << current_parent
 			current_token = ''
 			current_token_type = :unknown
+			current_opened = 0
 			# It may seem naive to use each_byte. What about Unicode? So long as we're using UTF-8, none of the
 			# BB Code control characters will appear as part of multibyte characters, because UTF-8 doesn't allow
 			# the range 0x00-0x7F in multibyte chars. As for the multibyte characters themselves, yes, they will
@@ -200,6 +201,7 @@ module RbbCode
 					when '['
 						current_token_type = :possible_tag
 						current_token << char
+						current_opened = 1
 					when "\r", "\n"
 						current_token_type = :break
 						current_token << char
@@ -220,6 +222,7 @@ module RbbCode
 						end
 						current_token = '['
 						current_token_type = :possible_tag
+						current_opened = 1
 					when "\r", "\n"
 						if @schema.text_valid_in_context?(*ancestor_list(current_parent))
 							current_parent << TextNode.new(current_parent, current_token)
@@ -262,6 +265,7 @@ module RbbCode
 						if char == '['
 							current_token = '['
 							current_token_type = :possible_tag
+							current_opened = 1
 						else
 							current_token = char
 							current_token_type = :text
@@ -271,6 +275,7 @@ module RbbCode
 					case char
 					when '['
 						current_parent << TextNode.new(current_parent, '[')
+						current_opened = 1
 						# No need to reset current_token or current_token_type, because now we're in a new possible tag
 					when '/'
 						current_token_type = :closing_tag
@@ -287,37 +292,44 @@ module RbbCode
 				when :opening_tag
 					if tag_name_char?(char_code) or char == '='
 						current_token << char
+					elsif char == '['
+					  current_opened += 1
+					  current_token << char
 					elsif char == ']'
+					  current_opened -= 1
 						current_token << ']'
-						tag_node = TagNode.from_opening_bb_code(current_parent, current_token)
-						if @schema.block_level?(tag_node.tag_name) and current_parent.tag_name == @schema.paragraph_tag_name
-							# If there is a line break before this, it's superfluous and should be deleted
-							prev_sibling = current_parent.children.last
-							if prev_sibling.is_a?(TagNode) and prev_sibling.tag_name == @schema.line_break_tag_name
-								current_parent.children.pop
-							end
-							# Promote a block-level element
-							current_parent = current_parent.parent
-							tag_node.parent = current_parent
-							current_parent << tag_node
-							current_parent = tag_node
-							# If all of this results in empty paragraph tags, no worries: they will be deleted later.
-						elsif tag_node.tag_name == current_parent.tag_name and @schema.close_twins?(tag_node.tag_name)
-							# The current tag and the tag we're now opening are of the same type, and this kind of tag auto-closes its twins
-							# (E.g. * tags in the default config.)
-							current_parent.parent << tag_node
-							current_parent = tag_node
-						elsif @schema.tag(tag_node.tag_name).valid_in_context?(*ancestor_list(current_parent))
-							current_parent << tag_node
-							current_parent = tag_node
-						end # else, don't do anything--the tag is invalid and will be ignored
-						if @schema.preformatted?(current_parent.tag_name)
-							current_token_type = :preformatted
-							current_parent.preformat!
-						else
-							current_token_type = :unknown
+
+						if current_opened <= 0
+						  tag_node = TagNode.from_opening_bb_code(current_parent, current_token)
+						  if @schema.block_level?(tag_node.tag_name) and current_parent.tag_name == @schema.paragraph_tag_name
+							  # If there is a line break before this, it's superfluous and should be deleted
+							  prev_sibling = current_parent.children.last
+							  if prev_sibling.is_a?(TagNode) and prev_sibling.tag_name == @schema.line_break_tag_name
+								  current_parent.children.pop
+							  end
+							  # Promote a block-level element
+							  current_parent = current_parent.parent
+							  tag_node.parent = current_parent
+							  current_parent << tag_node
+							  current_parent = tag_node
+							  # If all of this results in empty paragraph tags, no worries: they will be deleted later.
+						  elsif tag_node.tag_name == current_parent.tag_name and @schema.close_twins?(tag_node.tag_name)
+							  # The current tag and the tag we're now opening are of the same type, and this kind of tag auto-closes its twins
+							  # (E.g. * tags in the default config.)
+							  current_parent.parent << tag_node
+							  current_parent = tag_node
+						  elsif @schema.tag(tag_node.tag_name).valid_in_context?(*ancestor_list(current_parent))
+							  current_parent << tag_node
+							  current_parent = tag_node
+						  end # else, don't do anything--the tag is invalid and will be ignored
+						  if @schema.preformatted?(current_parent.tag_name)
+							  current_token_type = :preformatted
+							  current_parent.preformat!
+						  else
+							  current_token_type = :unknown
+						  end
+						  current_token = ''
 						end
-						current_token = ''
 					elsif char == "\r" or char == "\n"
 						current_parent << TextNode.new(current_parent, current_token)
 						current_token = char
@@ -352,7 +364,7 @@ module RbbCode
 					else
 						current_token_type = :text
 						current_token << char
-					end					
+					end
 				when :preformatted
 					if char == '['
 						current_parent << TextNode.new(current_parent, current_token)

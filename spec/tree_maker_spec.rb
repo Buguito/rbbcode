@@ -40,6 +40,14 @@ describe RbbCode::TreeMaker do
 			end
 		end
 
+		it 'should ignore [ and ] insite if they are single-quoted' do
+			str = "[QUOTE=[Christian]]this is a quote[/QUOTE]"
+
+			expect_tree(str) do
+				tag('quote', '[Christian]') { text 'this is a quote' }
+			end
+		end
+
 
 		it 'ignores tags that are invalid in their context' do
 			@schema.tag('u').may_not_descend_from('b')
