@@ -142,7 +142,7 @@ module RbbCode
 		# Delete empty paragraphs and line breaks at the end of block-level elements
 		def delete_junk_breaks!(node)
 			node.children.reject! do |child|
-				if child.is_a?(TagNode)
+				if child.is_a?(TagNode) and !node.is_a?(RootNode)
 					if !child.children.empty?
 						delete_junk_breaks!(child)
 						false
@@ -201,7 +201,7 @@ module RbbCode
 					when '['
 						current_token_type = :possible_tag
 						current_token << char
-						current_opened = 1
+						current_opened += 1
 					when "\r", "\n"
 						current_token_type = :break
 						current_token << char
@@ -222,7 +222,7 @@ module RbbCode
 						end
 						current_token = '['
 						current_token_type = :possible_tag
-						current_opened = 1
+						current_opened += 1
 					when "\r", "\n"
 						if @schema.text_valid_in_context?(*ancestor_list(current_parent))
 							current_parent << TextNode.new(current_parent, current_token)
@@ -265,7 +265,7 @@ module RbbCode
 						if char == '['
 							current_token = '['
 							current_token_type = :possible_tag
-							current_opened = 1
+							current_opened += 1
 						else
 							current_token = char
 							current_token_type = :text
@@ -275,7 +275,7 @@ module RbbCode
 					case char
 					when '['
 						current_parent << TextNode.new(current_parent, '[')
-						current_opened = 1
+						current_opened += 1
 						# No need to reset current_token or current_token_type, because now we're in a new possible tag
 					when '/'
 						current_token_type = :closing_tag
@@ -301,34 +301,34 @@ module RbbCode
 
 						if current_opened <= 0
 						  tag_node = TagNode.from_opening_bb_code(current_parent, current_token)
-						  if @schema.block_level?(tag_node.tag_name) and current_parent.tag_name == @schema.paragraph_tag_name
-							  # If there is a line break before this, it's superfluous and should be deleted
-							  prev_sibling = current_parent.children.last
-							  if prev_sibling.is_a?(TagNode) and prev_sibling.tag_name == @schema.line_break_tag_name
-								  current_parent.children.pop
-							  end
-							  # Promote a block-level element
-							  current_parent = current_parent.parent
-							  tag_node.parent = current_parent
-							  current_parent << tag_node
-							  current_parent = tag_node
-							  # If all of this results in empty paragraph tags, no worries: they will be deleted later.
-						  elsif tag_node.tag_name == current_parent.tag_name and @schema.close_twins?(tag_node.tag_name)
-							  # The current tag and the tag we're now opening are of the same type, and this kind of tag auto-closes its twins
-							  # (E.g. * tags in the default config.)
-							  current_parent.parent << tag_node
-							  current_parent = tag_node
-						  elsif @schema.tag(tag_node.tag_name).valid_in_context?(*ancestor_list(current_parent))
-							  current_parent << tag_node
-							  current_parent = tag_node
-						  end # else, don't do anything--the tag is invalid and will be ignored
-						  if @schema.preformatted?(current_parent.tag_name)
-							  current_token_type = :preformatted
-							  current_parent.preformat!
-						  else
-							  current_token_type = :unknown
-						  end
-						  current_token = ''
+  				    if @schema.block_level?(tag_node.tag_name) and current_parent.tag_name == @schema.paragraph_tag_name
+					      # If there is a line break before this, it's superfluous and should be deleted
+					      prev_sibling = current_parent.children.last
+					      if prev_sibling.is_a?(TagNode) and prev_sibling.tag_name == @schema.line_break_tag_name
+						      current_parent.children.pop
+					      end
+					      # Promote a block-level element
+					      current_parent = current_parent.parent
+					      tag_node.parent = current_parent
+					      current_parent << tag_node
+					      current_parent = tag_node
+					      # If all of this results in empty paragraph tags, no worries: they will be deleted later.
+				      elsif tag_node.tag_name == current_parent.tag_name and @schema.close_twins?(tag_node.tag_name)
+					      # The current tag and the tag we're now opening are of the same type, and this kind of tag auto-closes its twins
+					      # (E.g. * tags in the default config.)
+					      current_parent.parent << tag_node
+					      current_parent = tag_node
+				      elsif @schema.tag(tag_node.tag_name).valid_in_context?(*ancestor_list(current_parent))
+					      current_parent << tag_node
+					      current_parent = tag_node
+				      end # else, don't do anything--the tag is invalid and will be ignored
+				      if @schema.preformatted?(current_parent.tag_name)
+					      current_token_type = :preformatted
+					      current_parent.preformat!
+				      else
+					      current_token_type = :unknown
+				      end
+				      current_token = ''
 						end
 					elsif char == "\r" or char == "\n"
 						current_parent << TextNode.new(current_parent, current_token)
@@ -345,11 +345,17 @@ module RbbCode
 						current_token << char
 					elsif char == ']'
 						original_parent = current_parent
-						while current_parent.is_a?(TagNode) and current_parent.tag_name != current_token[2..-1].downcase
-							current_parent = current_parent.parent
-						end
+  				  while current_parent.is_a?(TagNode) and current_parent.tag_name != current_token[2..-1].downcase
+						  current_parent = current_parent.parent
+					  end
 						if current_parent.is_a?(TagNode)
-							current_parent = current_parent.parent
+						  if !current_parent.parent.is_a?(RootNode)
+  					    current_parent = current_parent.parent
+  					  else
+  					    new = TagNode.new(current_parent.parent, @schema.paragraph_tag_name)
+  					    current_parent.parent << new
+  					    current_parent = new
+  					  end
 						else # current_parent is a RootNode
 							# we made it to the top of the tree, and never found the tag to close
 							# so we'll just ignore the closing tag altogether
@@ -357,6 +363,7 @@ module RbbCode
 						end
 						current_token_type = :unknown
 						current_token = ''
+						current_opened -= 1
 					elsif char == "\r" or char == "\n"
 						current_parent << TextNode.new(current_parent, current_token)
 						current_token = char
@@ -396,7 +403,7 @@ module RbbCode
 		end
 		
 		def tag_name_char?(char_code)
-			(char_code >= LOWER_A_CODE and char_code <= LOWER_Z_CODE) or (char_code >= UPPER_A_CODE and char_code <= UPPER_Z_CODE) or char_code.chr == '*'
+			(LOWER_A_CODE..LOWER_Z_CODE).include?(char_code) or (UPPER_A_CODE..UPPER_Z_CODE).include?(char_code) or char_code.chr == '*'
 		end
 	end	
 end
