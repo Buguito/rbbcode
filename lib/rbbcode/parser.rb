@@ -19,8 +19,6 @@ module RbbCode
 			html_maker.make_html(tree)
 		end
 		
-		protected
-		
 		def escape_html_tags(str)
 			str.gsub('<', '&lt;').gsub('>', '&gt;')
 		end

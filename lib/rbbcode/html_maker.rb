@@ -48,8 +48,6 @@ module RbbCode
 			output
 		end
 		
-		protected
-		
 		def content_tag(tag_name, contents, attributes = {})
 			output = "<#{tag_name}"
 			attributes.each do |attr, value|

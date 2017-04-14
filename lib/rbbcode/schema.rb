@@ -24,8 +24,6 @@ module RbbCode
 			@schema = schema
 		end
 		
-		protected
-		
 		def normalize_ancestors(ancestors)
 			if ancestors.length == 1 and ancestors[0].is_a?(Array)
 				ancestors = ancestors[0]

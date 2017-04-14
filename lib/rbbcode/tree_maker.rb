@@ -116,8 +116,6 @@ module RbbCode
 			)
 		end
 		
-		protected
-		
 		def ancestor_list(parent)
 			ancestors = []
 			while parent.is_a?(TagNode)
